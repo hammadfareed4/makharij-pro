@@ -53,6 +53,17 @@ def test_shortened_ghunnah_is_flagged_as_ghunnah():
     assert tajweed_diff.GHUNNAH in _types(findings)
 
 
+def test_moderate_ghunnah_shortening_becomes_a_timestamp_candidate():
+    findings = classify(
+        "إِنَّ",
+        "ءِننن",
+        "ءِنن",
+        include_duration_candidates=True,
+    )
+    assert _types(findings) == [tajweed_diff.GHUNNAH]
+    assert findings[0].needs_duration_confirmation is True
+
+
 def test_substituted_letter_is_flagged_as_makhraj():
     findings = classify("صِرَٰطَ", "صِرَااطَ", "سِرَااطَ")
     assert tajweed_diff.MAKHRAJ in _types(findings)
@@ -124,15 +135,15 @@ def test_ikhfa_decision_table(word, expected, heard, category):
     assert types == ([category] if category else [])
 
 
-def test_a_garbled_word_with_an_unmade_ikhfa_is_still_reported_as_garbled():
-    # Four or more differences: the word did not match, whatever else is in it.
-    # ٱلْإِنسَٰنَ read back as رءِنكُتَ: the ikhfa said as a plain noon is one of
-    # four differences, so the word is reported as not matching, not as ghunnah.
+def test_a_garbled_word_with_one_clear_named_rule_keeps_that_rule():
+    # A noisy word can contain several generic differences, but when all named
+    # evidence agrees on one actionable rule it should not be buried under the
+    # Makhraj catch-all.
     findings = classify("ٱلْإِنسَٰنَ", "لءِںںںسَاانَ", "رءِنكُتَ")
     summary = summarize("ٱلْإِنسَٰنَ", findings)
     assert tajweed_diff.GHUNNAH in _types(findings)
     assert len(findings) >= tajweed_diff.GARBLED_FINDING_COUNT
-    assert summary.error_type == tajweed_diff.MAKHRAJ and "didn’t match" in summary.explanation
+    assert summary.error_type == tajweed_diff.GHUNNAH
 
 
 def test_other_letter_substitutions_are_still_makhraj():

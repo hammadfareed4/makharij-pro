@@ -299,20 +299,26 @@ async def _settled_word_verdicts(service, recent: tuple[np.ndarray, int], span: 
             for (surah, ayah), words in sorted(by_ayah.items())]
 
 
-async def _send_verdicts(websocket, payloads: list[dict], sent_words: set) -> None:
-    """Send only the words not reported before.
+async def _send_verdicts(websocket, payloads: list[dict], sent_words: dict) -> None:
+    """Send new words and corrections to verdicts reported earlier.
 
     The lookback deliberately overlaps what was already reported, so a word
     held back last time for being too near the live edge is picked up as soon
-    as it is ready -- without re-sending the ones already on screen.
+    as it is ready. A later window has more right-hand context and can revise a
+    verdict; sending that changed signature lets the client converge towards
+    the same answer the full-recording result will produce.
     """
     for payload in payloads:
-        fresh = [w for w in payload["words"]
-                 if (payload["surah"], payload["ayah"], w["word_index"]) not in sent_words]
+        fresh = []
+        for word in payload["words"]:
+            key = (payload["surah"], payload["ayah"], word["word_index"])
+            signature = (word.get("correct"), word.get("error_type"))
+            if sent_words.get(key) == signature:
+                continue
+            sent_words[key] = signature
+            fresh.append(word)
         if not fresh:
             continue
-        for w in fresh:
-            sent_words.add((payload["surah"], payload["ayah"], w["word_index"]))
         await websocket.send_text(json.dumps(
             {**payload, "words": fresh}, ensure_ascii=False))
 
@@ -451,9 +457,10 @@ async def stream_recitation(websocket: WebSocket):
     # complete audio of a word rather than the partial decode the cursor runs
     # on -- which is exactly why the cursor is not allowed to report mistakes.
     recent = _RecentAudio(int(KEEP_AUDIO_SEC * SAMPLE_RATE))
-    # (surah, ayah, word_index) already sent, so an overlapping lookback does
-    # not repeat itself.
-    sent_words: set[tuple[int, int, int]] = set()
+    # Last (correct, rule) signature sent for each word. Overlapping lookbacks
+    # stay quiet when unchanged and send a correction when added context
+    # changes the verdict.
+    sent_words: dict[tuple[int, int, int], tuple[bool | None, str | None]] = {}
     # Absolute sample where the cursor first reported each (surah, ayah). Late
     # by the cursor's own lag, which is fine: it only ever picks a window start
     # a couple of ayahs earlier, never a boundary that has to be exact.

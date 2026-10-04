@@ -3,7 +3,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from app.duration_verifier import build  # noqa: E402
+from app.duration_verifier import build, confirms  # noqa: E402
 
 
 def test_non_duration_rule_has_no_evidence():
@@ -23,6 +23,7 @@ def test_short_madd_is_supported_by_short_timestamp_span():
     assert evidence["direction"] == "short"
     assert evidence["verification"] == "supports_short"
     assert evidence["decisionActive"] is False
+    assert confirms(evidence) is True
 
 
 def test_grouped_token_uses_the_next_timestamp_for_duration():
@@ -44,4 +45,8 @@ def test_ghunnah_uses_nasal_runs():
     evidence = build("ghunnah", "ءِننن", "ءِن", [0, 1, 2], [0.0, 0.07, 0.14, 0.21])
     assert evidence["expectedCount"] == 3
     assert evidence["heardCount"] == 1
-    assert evidence["direction"] == "within_tolerance"  # current recogniser tolerance is +/-2
+    assert evidence["direction"] == "short"
+
+
+def test_inconclusive_evidence_does_not_confirm_a_borderline_error():
+    assert confirms({"direction": "short", "verification": "inconclusive"}) is False

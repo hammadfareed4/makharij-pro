@@ -918,16 +918,45 @@ class PhonemeAnalysisService:
             else:
                 start_sec = end_sec = 0.0
 
-            findings = tajweed_diff.classify(display, expected_word, predicted_word)
-            verdict = tajweed_diff.summarize(display, findings)
-            confidence = max(0.0, 1.0 - word_errors[i] / max(len(expected_word), 1))
-            duration_evidence = duration_verifier.build(
-                verdict.error_type if verdict else None,
+            findings = tajweed_diff.classify(
+                display,
                 expected_word,
                 predicted_word,
-                [pred_char_token_idx[p] for p in pred_idxs],
-                list(pred_times),
+                include_duration_candidates=True,
             )
+            duration_evidence = None
+            if any(f.needs_duration_confirmation for f in findings):
+                # Borderline Madd/Ghunnah count differences are useful only
+                # when acoustic time independently agrees. This recovers real
+                # moderate shortening without turning the recogniser's known
+                # run-count jitter into a rule accusation.
+                gated = []
+                for finding in findings:
+                    if not finding.needs_duration_confirmation:
+                        gated.append(finding)
+                        continue
+                    evidence = duration_verifier.build(
+                        finding.error_type,
+                        expected_word,
+                        predicted_word,
+                        [pred_char_token_idx[p] for p in pred_idxs],
+                        list(pred_times),
+                    )
+                    if duration_verifier.confirms(evidence):
+                        gated.append(finding)
+                        duration_evidence = evidence
+                findings = gated
+
+            verdict = tajweed_diff.summarize(display, findings)
+            confidence = max(0.0, 1.0 - word_errors[i] / max(len(expected_word), 1))
+            if duration_evidence is None:
+                duration_evidence = duration_verifier.build(
+                    verdict.error_type if verdict else None,
+                    expected_word,
+                    predicted_word,
+                    [pred_char_token_idx[p] for p in pred_idxs],
+                    list(pred_times),
+                )
 
             results.append(WordPhonemeResult(
                 ayah_number=ayah,

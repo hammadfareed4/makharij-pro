@@ -54,6 +54,16 @@ MADD_DROPPED_MAX = 1       # <=1 count heard where >=4 were required == not held
 GHUNNAH_COUNT_TOLERANCE = 2
 GHUNNAH_DROPPED_MAX = 1
 
+# For Ghunnah, the production scorer may also consider the next-narrower band
+# when token timestamps independently support the same duration error. The
+# plain classifier keeps the conservative tolerances above for callers that
+# have no acoustic timing evidence (offline tools, tests, corpus inspection).
+# Madd run counts are demonstrably unreliable on soft word endings: known-good
+# learner clips often decode 4 reference carriers as 2 even when the hold is
+# present. Keep Madd's existing bar; timestamps alone cannot safely lower it.
+TIMESTAMP_BACKED_MADD_TOLERANCE = MADD_COUNT_TOLERANCE
+TIMESTAMP_BACKED_GHUNNAH_TOLERANCE = 0
+
 # Error type ids -- these are the strings the Flutter client maps to its
 # TajweedErrorType enum, so they must stay in sync with
 # frontend/lib/models/tajweed_error.dart.
@@ -101,6 +111,9 @@ MAKHRAJ_MIN_FINDINGS = 1
 class Finding:
     error_type: str
     explanation: str
+    # True only for a borderline duration finding that must be discarded unless
+    # token timestamps independently point in the same direction.
+    needs_duration_confirmation: bool = False
 
 
 def runs(s: str) -> list[tuple[str, int]]:
@@ -164,7 +177,8 @@ def _kind(ch: str, count: int) -> str:
     return MAKHRAJ
 
 
-def classify(display_word: str, expected: str, predicted: str) -> list[Finding]:
+def classify(display_word: str, expected: str, predicted: str, *,
+             include_duration_candidates: bool = False) -> list[Finding]:
     """Diff one word's expected vs. predicted phonemes into typed findings.
 
     An empty `predicted` means the word was not heard at all. Returns [] when
@@ -259,18 +273,35 @@ def classify(display_word: str, expected: str, predicted: str) -> list[Finding]:
             continue
         if kind == MADD:
             dropped = p_n < e_n and e_n >= 4 and p_n <= MADD_DROPPED_MAX
-            if dropped or abs(p_n - e_n) > MADD_COUNT_TOLERANCE:
+            difference = abs(p_n - e_n)
+            confirmed_by_count = dropped or difference > MADD_COUNT_TOLERANCE
+            timestamp_candidate = (
+                include_duration_candidates
+                and difference > TIMESTAMP_BACKED_MADD_TOLERANCE
+            )
+            if confirmed_by_count or timestamp_candidate:
                 findings.append(Finding(
                     MADD,
                     f"“{display_word}” expects about {e_n} counts of elongation (madd). "
                     f"About {p_n} came through — listen back and compare.",
+                    needs_duration_confirmation=not confirmed_by_count,
                 ))
         elif kind == GHUNNAH:
-            if p_n <= GHUNNAH_DROPPED_MAX or abs(p_n - e_n) > GHUNNAH_COUNT_TOLERANCE:
+            difference = abs(p_n - e_n)
+            confirmed_by_count = (
+                p_n <= GHUNNAH_DROPPED_MAX
+                or difference > GHUNNAH_COUNT_TOLERANCE
+            )
+            timestamp_candidate = (
+                include_duration_candidates
+                and difference > TIMESTAMP_BACKED_GHUNNAH_TOLERANCE
+            )
+            if confirmed_by_count or timestamp_candidate:
                 findings.append(Finding(
                     GHUNNAH,
                     f"The nasal hum (ghunnah) on “{e_ch}” in “{display_word}” sounded shorter "
                     f"than the two counts expected — listen back.",
+                    needs_duration_confirmation=not confirmed_by_count,
                 ))
         elif kind == SHADDAH and p_n < e_n:
             findings.append(Finding(
@@ -293,7 +324,9 @@ def summarize(display_word: str, findings: list[Finding]) -> Finding | None:
     # to outweigh recognizer noise; a named rule always speaks for itself.
     if all(f.error_type == MAKHRAJ for f in findings) and len(findings) < MAKHRAJ_MIN_FINDINGS:
         return None
-    if len(findings) >= GARBLED_FINDING_COUNT:
+    named = [f for f in findings if f.error_type in {MADD, GHUNNAH, SHADDAH}]
+    named_types = {f.error_type for f in named}
+    if len(findings) >= GARBLED_FINDING_COUNT and len(named_types) != 1:
         return Finding(
             MAKHRAJ,
             f"Most of “{display_word}” didn’t match what was expected — listen back, "
@@ -302,4 +335,8 @@ def summarize(display_word: str, findings: list[Finding]) -> Finding | None:
     ranked = sorted(findings, key=lambda f: SEVERITY_ORDER.index(f.error_type)
                     if f.error_type in SEVERITY_ORDER else len(SEVERITY_ORDER))
     kept = ranked[:MAX_REPORTED_FINDINGS]
-    return Finding(kept[0].error_type, " ".join(f.explanation for f in kept))
+    return Finding(
+        kept[0].error_type,
+        " ".join(f.explanation for f in kept),
+        needs_duration_confirmation=kept[0].needs_duration_confirmation,
+    )

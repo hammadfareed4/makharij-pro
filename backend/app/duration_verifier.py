@@ -7,8 +7,10 @@ recogniser token(s) carrying that run.  ``verification`` is deliberately
 ``inconclusive`` unless count direction and timestamp evidence agree.
 
 These features are persisted for calibration against teacher-labelled words.
-Until that calibration exists they explain/support a finding but never create
-one by themselves.
+For Ghunnah only, a narrow borderline count difference is admitted when these
+timestamps independently support the same direction. Madd remains descriptive:
+known-good soft endings prove its token timestamps are not reliable enough to
+lower the existing Madd threshold.
 """
 
 from __future__ import annotations
@@ -17,7 +19,14 @@ import math
 from statistics import median
 
 from .analysis_metadata import ANALYSIS_VERSION
-from .tajweed_diff import ELONGATION_CHARS, IKHFA_CHARS, NASAL_CHARS, runs
+from .tajweed_diff import (
+    ELONGATION_CHARS,
+    IKHFA_CHARS,
+    NASAL_CHARS,
+    TIMESTAMP_BACKED_GHUNNAH_TOLERANCE,
+    TIMESTAMP_BACKED_MADD_TOLERANCE,
+    runs,
+)
 
 DURATION_EVIDENCE_VERSION = "timestamp-duration-v1"
 
@@ -47,10 +56,10 @@ def build(rule: str | None, expected: str, predicted: str,
           predicted_token_ids: list[int], token_times: list[float]) -> dict | None:
     if rule == "madd":
         target = ELONGATION_CHARS
-        tolerance = 2
+        tolerance = TIMESTAMP_BACKED_MADD_TOLERANCE
     elif rule == "ghunnah":
         target = NASAL_CHARS | IKHFA_CHARS
-        tolerance = 2
+        tolerance = TIMESTAMP_BACKED_GHUNNAH_TOLERANCE
     else:
         return None
 
@@ -101,5 +110,13 @@ def build(rule: str | None, expected: str, predicted: str,
         "acousticUnits": round(acoustic_units, 2),
         "direction": direction,
         "verification": verification,
-        "decisionActive": False,
+        "decisionActive": rule == "ghunnah",
     }
+
+
+def confirms(evidence: dict | None) -> bool:
+    """Whether timestamps independently confirm a count-based duration error."""
+    if evidence is None:
+        return False
+    direction = evidence.get("direction")
+    return evidence.get("verification") == f"supports_{direction}"
