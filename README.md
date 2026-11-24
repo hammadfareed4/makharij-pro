@@ -10,7 +10,7 @@ Word-by-word Tajweed feedback for all **6,236 ayahs** — live as you recite, an
 [![FastAPI](https://img.shields.io/badge/FastAPI-backend-009688?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
 [![Python](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)](https://python.org)
 [![Model](https://img.shields.io/badge/ASR-streaming%20zipformer-orange)](https://huggingface.co/Quran-Lab/zipformer_p-arabic-v3)
-[![License](https://img.shields.io/badge/license-NPL--1.2%20(no--profit)-red)](#-license--this-matters)
+[![License](https://img.shields.io/badge/license-NPL--1.2%20(no--profit)-red)](#honest-limitations)
 
 </div>
 
@@ -35,7 +35,7 @@ Words you never recited stay grey. They are never counted against you.
 | 🎧 **Hear a Qari** | Reference recitation from **Sudais, Alafasy, or Yasser ad-Dussary** |
 | 📊 **Progress tracking** | Accuracy trend, per-rule mastery, practice-activity heatmap, streaks |
 | 🎯 **Practice plan** | Built from the rules *you* actually break, not a fixed syllabus |
-| 🙋 **"I said it right"** | Disagree with any flag. The app records it instead of arguing (see [limitations](#-honest-limitations)) |
+| 🙋 **"I said it right"** | Disagree with any flag. The app records it instead of arguing (see [limitations](#honest-limitations)) |
 
 ---
 
